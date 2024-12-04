@@ -1,6 +1,7 @@
 import pygame
 import sys
 import time
+import random
 
 # Constants
 BOARD_SIZE = 8
@@ -27,6 +28,7 @@ board_y_offset = (screen_height - board_height) // 2
 # Game states
 STATE_MAIN_MENU = "main_menu"
 STATE_PLAYER_SETUP = "player_setup"
+STATE_BOT_SETUP = "bot_setup"
 STATE_DIFFICULTY_SELECTION = "difficulty_selection"
 STATE_GAME = "game"
 STATE_WINNER = "winner"
@@ -59,6 +61,11 @@ pygame.draw.circle(red_piece, RED, (SQUARE_SIZE // 2, SQUARE_SIZE // 2), SQUARE_
 board = [[None for _ in range(BOARD_SIZE)] for _ in range(BOARD_SIZE)]
 selected_piece = None
 invalid_move_timer = None  # Timer for displaying "X" for invalid moves
+
+#bot settings
+bot_game = False
+bot_difficulty = None
+bot_color = BLACK
 
 # Functions
 def initialize_board():
@@ -104,15 +111,31 @@ def is_valid_move(start, end):
         mid_row = (start_row + end_row) // 2
         mid_col = (start_col + end_col) // 2
         mid_piece = board[mid_row][mid_col]
-        if (piece in [BLACK_PIECE, BLACK_KING] and mid_piece in [RED_PIECE, RED_KING]) or \
+        if mid_piece and (piece in [BLACK_PIECE, BLACK_KING] and mid_piece in [RED_PIECE, RED_KING]) or \
            (piece in [RED_PIECE, RED_KING] and mid_piece in [BLACK_PIECE, BLACK_KING]):
             # Ensure the destination is empty
             if board[end_row][end_col] is None:
-                # Capture the opponent's piece
-                board[mid_row][mid_col] = None
                 return True
 
     return False
+
+def get_valid_moves(color):
+    """Get all valid moves for a given color"""
+    valid_moves = []
+    for row in range(BOARD_SIZE):
+        for col in range(BOARD_SIZE):
+            piece = board[row][col]
+            if piece and ((piece in [BLACK_PIECE, BLACK_KING] and color == BLACK) or (piece in [RED_PIECE, RED_KING] and color == RED)):
+                for dr, dc in [(-1, -1), (-1, 1), (1, -1), (1, 1)]:
+                    new_row, new_col = row + dr, col + dc
+                    if 0 <= new_row < BOARD_SIZE and 0 <= new_col < BOARD_SIZE:
+                        if board[new_row][new_col] is None and is_valid_move((row, col), (new_row, new_col)):
+                            valid_moves.append(((row, col), (new_row, new_col)))
+                    new_row, new_col = row + 2*dr, col + 2*dc
+                    if 0 <= new_row < BOARD_SIZE and 0 <= new_col < BOARD_SIZE:
+                        if board[new_row][new_col] is None and is_valid_move((row, col), (new_row, new_col)):
+                            valid_moves.append(((row, col), (new_row, new_col)))
+    return valid_moves
 
 def check_for_king(row, col):
     """Promote to king if reaching the opposite side"""
@@ -234,6 +257,72 @@ def draw_player_setup():
     screen.blit(player1_color_text, (screen_width // 2 - player1_color_text.get_width() // 2, screen_height // 2 + 100))
     screen.blit(player2_color_text, (screen_width // 2 - player2_color_text.get_width() // 2, screen_height // 2 + 150))
 
+def draw_bot_setup():
+    global active_input, player1_name, player2_name
+    screen.fill(BACKGROUND_COLOR)
+    SELECTION_BACKGROUND_COLOR = (217, 217, 217)  # Color D9D9D9
+
+    # Text elements for labels
+    player1_text = font.render("Player Name:", True, BLACK)
+    select_color_text = font.render("Select Color:", True, BLACK)
+    start_text = font.render("Start Game", True, BLACK)
+    back_text = font.render("Back", True, BLACK)
+    
+    # Background rectangles for labels
+    player1_label_rect = pygame.Rect(screen_width // 2 - 200, screen_height // 2 - 200, player1_text.get_width() + 220, player1_text.get_height() + 20)
+    start_rect = pygame.Rect(screen_width // 2 - start_text.get_width() // 2 - 20, screen_height // 2 + 200, start_text.get_width() + 40, start_text.get_height() + 20)
+    back_rect = pygame.Rect(screen_width // 2 - back_text.get_width() // 2 - 20, screen_height // 2 + 250, back_text.get_width() + 40, back_text.get_height() + 20)
+
+    # Draw rounded rectangles for labels and buttons
+    pygame.draw.rect(screen, SELECTION_BACKGROUND_COLOR, player1_label_rect, border_radius=15)
+    pygame.draw.rect(screen, SELECTION_BACKGROUND_COLOR, start_rect, border_radius=15)
+    pygame.draw.rect(screen, SELECTION_BACKGROUND_COLOR, back_rect, border_radius=15)
+
+    # Render and position label texts
+    screen.blit(player1_text, (player1_label_rect.x + 10, player1_label_rect.y + 10))
+    screen.blit(select_color_text, (screen_width // 2 - select_color_text.get_width() // 2, screen_height // 2 + 10))
+    screen.blit(start_text, (start_rect.x + 20, start_rect.y + 10))
+    screen.blit(back_text, (back_rect.x + 20, back_rect.y + 10))
+
+    # Draw input box with player name text
+    pygame.draw.rect(screen, WHITE, (screen_width // 2, player1_label_rect.y, 200, player1_text.get_height() + 20))
+    player1_name_text = font.render(player1_name, True, BLACK)
+    screen.blit(player1_name_text, (screen_width // 2 + 10, player1_label_rect.y + 10))
+
+    # Draw color selection circles
+    pygame.draw.circle(screen, BLACK, (screen_width // 2 - 50, screen_height // 2 + 60), 20)
+    pygame.draw.circle(screen, RED, (screen_width // 2 + 50, screen_height // 2 + 60), 20)
+
+    # Outline selected color
+    if player1_color == BLACK:
+        pygame.draw.circle(screen, WHITE, (screen_width // 2 - 50, screen_height // 2 + 60), 25, 2)
+    else:
+        pygame.draw.circle(screen, WHITE, (screen_width // 2 + 50, screen_height // 2 + 60), 25, 2)
+
+    # Display selected color texts
+    bot_color_text = font.render(f"Bot Color: {'Red' if player1_color == BLACK else 'Black'}", True, BLACK)
+    screen.blit(bot_color_text, (screen_width // 2 - bot_color_text.get_width() // 2, screen_height // 2 + 100))
+
+def bot_moves():
+    if bot_difficulty == 'easy':
+        moves = get_valid_moves(bot_color)
+        if not moves:
+            global winner_message, game_state
+            winner_message = f"{'Player 1' if player1_color == BLACK else 'Player 2'} wins!"
+            game_state = STATE_WINNER
+        else:
+            move = random.choice(moves)
+            start_pos, end_pos = move
+            
+            if abs(end_pos[0] - start_pos[0]) == 2:
+                mid_row = (start_pos[0] + end_pos[0]) // 2
+                mid_col = (start_pos[1] + end_pos[1]) // 2
+                board[mid_row][mid_col] = None
+            board[end_pos[0]][end_pos[1]] = board[start_pos[0]][start_pos[1]]
+            board[start_pos[0]][start_pos[1]] = None    
+            check_for_king(end_pos[0], end_pos[1])
+            switch_turn()
+            check_for_winner()
 
 def draw_difficulty_selection():
     screen.fill(BACKGROUND_COLOR)
@@ -378,12 +467,43 @@ while running:
                     elif screen_width // 2 + 50 - 20 <= mouse_x <= screen_width // 2 + 50 + 20:
                         player1_color, player2_color = RED, BLACK
                 elif y_start + 400 <= mouse_y <= y_start + 440:
+                    initialize_board()
+                    current_turn = BLACK
+                    selected_piece = None
+                    game_state = STATE_GAME
+                elif y_start + 450 <= mouse_y <= y_start + 490:
+                    game_state = STATE_MAIN_MENU
+            elif game_state == STATE_BOT_SETUP:
+                if y_start <= mouse_y <= y_start + 40 and screen_width // 2 <= mouse_x <= screen_width // 2 + 200:
+                    active_input = "player1"
+                elif y_start + 250 - 20 <= mouse_y <= y_start + 250 +20:
+                    if screen_width // 2 - 50 - 20 <= mouse_x <= screen_width // 2 - 50 + 20:
+                        player1_color, bot_color = BLACK, RED
+                    elif screen_width // 2 + 50 - 20 <= mouse_x <= screen_width // 2 + 50 + 20:
+                        player1_color, bot_color = RED, BLACK
+                elif y_start + 400 <= mouse_y <= y_start + 440:
+                    player2_name = f"{bot_difficulty} bot"
+                    initialize_board()
+                    current_turn = BLACK
+                    selected_piece = None
                     game_state = STATE_GAME
                 elif y_start + 450 <= mouse_y <= y_start + 490:
                     game_state = STATE_MAIN_MENU
             elif game_state == STATE_DIFFICULTY_SELECTION:
                 y_start = screen_height // 2 - 100
-                if y_start + 300 <= mouse_y <= screen_height // 2 + 340:
+                if y_start <= mouse_y <= screen_height // 2 + 40:
+                    bot_game = True
+                    bot_difficulty = 'easy'         # easy bot game
+                    game_state = STATE_BOT_SETUP
+                elif y_start +100 <= mouse_y <= screen_height // 2 + 140:
+                    bot_game = True
+                    bot_difficulty = 'medium'       # medium bot game
+                    game_state = STATE_BOT_SETUP
+                elif y_start + 200 <= mouse_y <= screen_height // 2 + 240:
+                    bot_game = True
+                    bot_difficulty = 'hard'         # hard bot game
+                    game_state = STATE_BOT_SETUP
+                elif y_start + 300 <= mouse_y <= screen_height // 2 + 340:
                     game_state = STATE_MAIN_MENU
             elif game_state == STATE_GAME:
                 row, col = get_square_under_mouse()
@@ -391,6 +511,10 @@ while running:
                     if selected_piece:
                         if is_valid_move(selected_piece, (row, col)):
                             old_row, old_col = selected_piece
+                            if abs(row - old_row) == 2:
+                                mid_row = (old_row +row) // 2
+                                mid_col = (old_col + col) // 2
+                                board[mid_row][mid_col] = None
                             board[row][col] = board[old_row][old_col]
                             board[old_row][old_col] = None
                             check_for_king(row, col)
@@ -423,6 +547,9 @@ while running:
                     player1_name += event.unicode
                 elif active_input == "player2" and len(player2_name) < 10:
                     player2_name += event.unicode
+                    
+    if game_state == STATE_GAME and bot_game and current_turn == bot_color:
+        bot_moves()
 
     if invalid_move_timer and time.time() - invalid_move_timer["start_time"] > 2:
         invalid_move_timer = None
@@ -431,6 +558,8 @@ while running:
         draw_main_menu()
     elif game_state == STATE_PLAYER_SETUP:
         draw_player_setup()
+    elif game_state == STATE_BOT_SETUP:
+        draw_bot_setup()
     elif game_state == STATE_DIFFICULTY_SELECTION:
         draw_difficulty_selection()
     elif game_state == STATE_GAME:
