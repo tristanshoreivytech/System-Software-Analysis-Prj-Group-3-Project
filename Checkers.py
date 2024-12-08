@@ -2,6 +2,7 @@ import pygame
 import sys
 import time
 import random
+import copy
 
 # Constants
 BOARD_SIZE = 8
@@ -304,25 +305,111 @@ def draw_bot_setup():
     screen.blit(bot_color_text, (screen_width // 2 - bot_color_text.get_width() // 2, screen_height // 2 + 100))
 
 def bot_moves():
+    global winner_message, game_state
+    moves = get_valid_moves(bot_color)
+    if not moves:
+        # Bot has no valid moves, player wins
+        winner_message = f"{player1_name if player1_color == BLACK else player2_name} wins!"
+        game_state = STATE_WINNER
+        return
+
     if bot_difficulty == 'easy':
-        moves = get_valid_moves(bot_color)
-        if not moves:
-            global winner_message, game_state
-            winner_message = f"{'Player 1' if player1_color == BLACK else 'Player 2'} wins!"
-            game_state = STATE_WINNER
-        else:
-            move = random.choice(moves)
-            start_pos, end_pos = move
+        # Random move
+        move = random.choice(moves)
+    elif bot_difficulty == 'medium':
+        # Use minimax with moderate depth
+        _, move = minimax(board, depth=3, alpha=float('-inf'), beta=float('inf'), maximizing_player=True, bot_color=bot_color)
+    elif bot_difficulty == 'hard':
+        # Use minimax with a deeper search
+        _, move = minimax(board, depth=5, alpha=float('-inf'), beta=float('inf'), maximizing_player=True, bot_color=bot_color)
+
+    # Execute move
+    (start_row, start_col), (end_row, end_col) = move
+    if abs(end_row - start_row) == 2:
+        mid_row = (start_row + end_row) // 2
+        mid_col = (start_col + end_col) // 2
+        board[mid_row][mid_col] = None
+    board[end_row][end_col] = board[start_row][start_col]
+    board[start_row][start_col] = None
+    check_for_king(end_row, end_col)
+    switch_turn()
+    check_for_winner()
             
-            if abs(end_pos[0] - start_pos[0]) == 2:
-                mid_row = (start_pos[0] + end_pos[0]) // 2
-                mid_col = (start_pos[1] + end_pos[1]) // 2
-                board[mid_row][mid_col] = None
-            board[end_pos[0]][end_pos[1]] = board[start_pos[0]][start_pos[1]]
-            board[start_pos[0]][start_pos[1]] = None    
-            check_for_king(end_pos[0], end_pos[1])
-            switch_turn()
-            check_for_winner()
+def evaluate_board(board, bot_color):
+    black_pieces = 0
+    red_pieces = 0
+    
+    for row in board:
+        for piece in row:
+            if piece == BLACK_PIECE:
+                black_pieces += 1
+            elif piece == RED_PIECE:
+                red_pieces += 1
+            elif piece == BLACK_KING:
+                black_pieces += 1.5
+            elif piece == RED_KING:
+                red_pieces += 1.5
+                
+    if bot_color == BLACK:
+        return black_pieces - red_pieces
+    else:
+        return red_pieces - black_pieces
+    
+def make_move(board, move):
+        new_board = copy.deepcopy(board)
+        (start_row, start_col), (end_row, end_col) = move
+        piece = new_board[start_row][start_col]
+        new_board[start_row][start_col] = None
+        new_board[end_row][end_col] = piece
+        
+        if abs(end_row - start_row) == 2:
+            mid_row = (start_row + end_row) // 2
+            mid_col = (start_col + end_col) // 2
+            new_board[mid_row][mid_col] = None
+            
+        if piece == BLACK_PIECE and end_row == BOARD_SIZE - 1:
+            new_board[end_row][end_col] = BLACK_KING
+        elif piece == RED_PIECE and end_row == 0:
+            new_board[end_row][end_col] = RED_KING
+            
+        return new_board
+    
+def minimax(board, depth, alpha, beta, maximizing_player, bot_color):
+    if depth == 0 or game_over(board):
+        return evaluate_board(board, bot_color), None
+
+    current_color = bot_color if maximizing_player else (RED if bot_color == BLACK else BLACK)
+    moves = get_valid_moves(current_color)
+    
+    if not moves:
+        return evaluate_board(board, bot_color), None
+
+    best_move = None
+
+    if maximizing_player:
+        max_eval = float('-inf')
+        for move in moves:
+            new_board = make_move(board, move)
+            eval_score, _ = minimax(new_board, depth - 1, alpha, beta, False, bot_color)
+            if eval_score > max_eval:
+                max_eval = eval_score
+                best_move = move
+            alpha = max(alpha, eval_score)
+            if beta <= alpha:
+                break
+        return max_eval, best_move
+    else:
+        min_eval = float('inf')
+        for move in moves:
+            new_board = make_move(board, move)
+            eval_score, _ = minimax(new_board, depth - 1, alpha, beta, True, bot_color)
+            if eval_score < min_eval:
+                min_eval = eval_score
+                best_move = move
+            beta = min(beta, eval_score)
+            if beta <= alpha:
+                break
+        return min_eval, best_move    
 
 def draw_difficulty_selection():
     screen.fill(BACKGROUND_COLOR)
@@ -436,6 +523,13 @@ def draw_winner_screen():
     main_menu_text = font.render("Return to Main Menu", True, BLACK)
     screen.blit(main_menu_text, (screen_width // 2 - main_menu_text.get_width() // 2, screen_height // 2 + 50))
 
+def game_over(board):
+    black_moves = get_valid_moves(BLACK)
+    red_moves = get_valid_moves(RED)
+    if not black_moves or not red_moves:
+        return True
+    return False
+
 # Main game loop
 running = True
 initialize_board()
@@ -467,9 +561,11 @@ while running:
                     elif screen_width // 2 + 50 - 20 <= mouse_x <= screen_width // 2 + 50 + 20:
                         player1_color, player2_color = RED, BLACK
                 elif y_start + 400 <= mouse_y <= y_start + 440:
+                    board = [[None for _ in range(BOARD_SIZE)] for _ in range(BOARD_SIZE)]
                     initialize_board()
                     current_turn = BLACK
                     selected_piece = None
+                    bot_game = False
                     game_state = STATE_GAME
                 elif y_start + 450 <= mouse_y <= y_start + 490:
                     game_state = STATE_MAIN_MENU
@@ -483,8 +579,10 @@ while running:
                         player1_color, bot_color = RED, BLACK
                 elif y_start + 400 <= mouse_y <= y_start + 440:
                     player2_name = f"{bot_difficulty} bot"
+                    player2_color = bot_color
+                    board = [[None for _ in range(BOARD_SIZE)] for _ in range(BOARD_SIZE)]
                     initialize_board()
-                    current_turn = BLACK
+                    current_turn = player1_color
                     selected_piece = None
                     game_state = STATE_GAME
                 elif y_start + 450 <= mouse_y <= y_start + 490:
