@@ -95,6 +95,8 @@ def is_valid_move(start, end):
     end_row, end_col = end
     piece = board[start_row][start_col]
     direction = 1 if piece in [BLACK_PIECE, BLACK_KING] else -1  # Black moves down, red moves up
+    
+    king_piece = (piece == BLACK_KING or piece == RED_KING)
 
     # Move must be diagonal
     if abs(start_col - end_col) != abs(start_row - end_row):
@@ -114,6 +116,9 @@ def is_valid_move(start, end):
         mid_piece = board[mid_row][mid_col]
         if mid_piece and (piece in [BLACK_PIECE, BLACK_KING] and mid_piece in [RED_PIECE, RED_KING]) or \
            (piece in [RED_PIECE, RED_KING] and mid_piece in [BLACK_PIECE, BLACK_KING]):
+            # Ensure regular pieces can only capture forward
+            if not king_piece and (end_row - start_row != 2 * direction):
+                return False
             # Ensure the destination is empty
             if board[end_row][end_col] is None:
                 return True
@@ -543,6 +548,10 @@ while running:
             mouse_x, mouse_y = pygame.mouse.get_pos()
             y_start = screen_height // 2 - 200  # Define y_start within the main loop
             if game_state == STATE_MAIN_MENU:
+                player1_name = ""
+                player2_name = ""
+                bot_game = False
+                active_input = None
                 if screen_height // 2 - 100 <= mouse_y <= screen_height // 2 - 60:
                     game_state = STATE_PLAYER_SETUP
                 elif screen_height // 2 <= mouse_y <= screen_height // 2 + 40:
@@ -578,7 +587,7 @@ while running:
                     elif screen_width // 2 + 50 - 20 <= mouse_x <= screen_width // 2 + 50 + 20:
                         player1_color, bot_color = RED, BLACK
                 elif y_start + 400 <= mouse_y <= y_start + 440:
-                    player2_name = f"{bot_difficulty} bot"
+                    player2_name = f"{bot_difficulty.capitalize()} Bot"
                     player2_color = bot_color
                     board = [[None for _ in range(BOARD_SIZE)] for _ in range(BOARD_SIZE)]
                     initialize_board()
@@ -622,8 +631,7 @@ while running:
                         else:
                             invalid_move_timer = {"position": (row, col), "start_time": time.time()}
                             selected_piece = None
-                    elif board[row][col] and ((board[row][col] in [BLACK_PIECE, BLACK_KING] and current_turn == BLACK) or 
-                                              (board[row][col] in [RED_PIECE, RED_KING] and current_turn == RED)):
+                    elif board[row][col] and ((board[row][col] in [BLACK_PIECE, BLACK_KING] and current_turn == BLACK) or (board[row][col] in [RED_PIECE, RED_KING] and current_turn == RED)):
                         selected_piece = (row, col)
                 elif screen_width - 150 <= mouse_x <= screen_width - 50 and screen_height - 50 <= mouse_y <= screen_height - 20:
                     game_state = STATE_MAIN_MENU
